@@ -1,0 +1,22 @@
+[
+  {
+    "step": 0,
+    "actions": {
+      "agent_0": 3
+    },
+    "rewards": {
+      "agent_0": 10.0
+    },
+    "infos": {
+      "agent_0": {
+        "position": [
+          2,
+          3
+        ],
+        "collected_resource": 10,
+        "total_reward": 10.0,
+        "remaining_resources": 14
+      }
+    }
+  }
+]
