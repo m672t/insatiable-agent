@@ -1,5 +1,5 @@
 from agents.base_agent import BaseAgent
-
+import numpy as np
 
 class ValueSeekingAgent(BaseAgent):
     """
@@ -74,6 +74,43 @@ class ValueSeekingAgent(BaseAgent):
         self.novelty_weight = float(
             novelty_weight
         )
+ 
+                # =====================================================
+        # Motivation State - Day 3
+        # =====================================================
+
+        self.motivation_state = {
+            "lack": 0.0,
+            "desire": 0.0,
+            "satisfaction": 0.0,
+            "urgency": 0.0,
+        }
+
+        # Last interaction state
+        self.steps_since_collection = 0
+        self.last_collected_value = 0.0
+
+        # Motivation parameters
+        self.motivation_decay = 0.95
+        self.urgency_growth = 0.025
+        self.satisfaction_decay = 0.90
+        
+        # =========================================================
+        # Day 4 - Risk Model
+        # =========================================================
+
+        self.risk_distance_weight = 1.0  
+        self.risk_competition_weight = 1.0
+
+        # میزان  تحمل ریسک پایه
+        self.base_risk_tolerance = 0.50
+
+        # اثر Motivation روی Risk Tolerance
+        self.lack_risk_tolerance_weight = 0.40
+        self.satisfaction_risk_tolerance_weight = 0.40
+
+        # شدت اثر Risk روی Resource Score
+        self.risk_penalty_weight = 0.50
 
     # =========================================================
     # Distance
@@ -743,65 +780,47 @@ class ValueSeekingAgent(BaseAgent):
     # Motivation
     # =========================================================
 
+       # =========================================================
+    # Motivation Multiplier
+    # =========================================================
+
     def get_motivation_multiplier(self):
 
         motivation = (
             self.get_motivation_state()
         )
 
+        lack = float(
+            motivation.get("lack", 0.0)
+        )
+
         desire = float(
-            motivation.get(
-                "desire",
-                0.0,
-            )
+            motivation.get("desire", 0.0)
         )
 
         urgency = float(
-            motivation.get(
-                "urgency",
-                0.0,
-            )
+            motivation.get("urgency", 0.0)
         )
 
         satisfaction = float(
-            motivation.get(
-                "satisfaction",
-                0.0,
-            )
+            motivation.get("satisfaction", 0.0)
         )
 
         signal = (
-            0.55 * desire
+            0.30 * lack
+            + 0.45 * desire
             + 0.35 * urgency
-            - 0.10 * satisfaction
+            - 0.25 * satisfaction
         )
 
         return max(
-            0.0,
-            1.0
-            + self.motivation_weight
-            * signal,
-        )
-
-    # =========================================================
-    # Risk Adjustment
-    # =========================================================
-
-    def get_risk_adjustment(
-        self,
-        distance,
-    ):
-
-        risk = (
-            self.get_risk_tolerance()
-        )
-
-        return (
-            distance
-            * (
+            0.50,
+            min(
+                2.00,
                 1.0
-                - 0.70 * risk
-            )
+                + self.motivation_weight
+                * signal,
+            ),
         )
 
     # =========================================================
@@ -918,11 +937,24 @@ class ValueSeekingAgent(BaseAgent):
         # Distance
         # -----------------------------------------------------
 
-        distance_cost = (
+        # -----------------------------------------------------
+        # Day 4 Risk
+        # -----------------------------------------------------
+
+        risk = self.get_resource_risk(
+        position
+        )
+
+        risk_adjustment = (
             self.get_risk_adjustment(
-                distance
+                risk
             )
-            + self.distance_weight
+        )
+
+        distance_cost = (
+            self.distance_weight
+            +
+            risk_adjustment
         )
 
         base_score = (
@@ -933,133 +965,96 @@ class ValueSeekingAgent(BaseAgent):
             )
         )
 
-        # -----------------------------------------------------
-        # Motivation
-        # -----------------------------------------------------
-
-        motivation_multiplier = (
-            self.get_motivation_multiplier()
-        )
-
-        score = (
-            base_score
-            * motivation_multiplier
-        )
-
-        # -----------------------------------------------------
-        # Location Memory
-        # -----------------------------------------------------
-
-        location_memory = (
-            self.get_location_memory_value(
-                position
+        base_score = (
+            expected_value
+            / max(
+                0.1,
+                distance_cost,
             )
         )
 
-        if location_memory > 0.0:
 
-            memory_ratio = (
-                location_memory
-                / max(
-                    1.0,
-                    value,
-                )
-            )
 
-            memory_ratio = max(
-                0.0,
-                min(
-                    2.0,
-                    memory_ratio,
-                ),
-            )
-
-            # Confidence based on number of observations.
-            visits = (
-                self.get_location_visit_count(
-                    position
-                )
-            )
-
-            confidence = min(
-                1.0,
-                visits / 10.0,
-            )
-
-            memory_bonus = (
-                self.memory_weight
-                * base_score
-                * memory_ratio
-                * confidence
-            )
-
-            score += memory_bonus
-
-        # -----------------------------------------------------
-        # Learning
-        # -----------------------------------------------------
-
-        learning_signal = (
-            self.get_location_learning_signal(
-                position,
-                value,
-            )
-        )
-
-        learning_bonus = (
-            self.learning_weight
-            * base_score
-            * learning_signal
-        )
-
-        score += learning_bonus
-
-        # -----------------------------------------------------
-        # Novelty / Exploration
-        # -----------------------------------------------------
-
-        novelty = (
-            self.get_location_novelty(
-                position
-            )
-        )
-
-        exploration_bonus = (
-            self.exploration_weight
-            * base_score
-            * novelty
-        )
-
-        score += exploration_bonus
-
-        # -----------------------------------------------------
-        # Satisfaction
-        # -----------------------------------------------------
+# -----------------------------------------------------
+# Day 3 Motivation
+# -----------------------------------------------------
 
         motivation = (
             self.get_motivation_state()
         )
 
-        satisfaction = float(
-            motivation.get(
-                "satisfaction",
-                0.0,
-            )
+        lack = float(
+            motivation.get("lack", 0.0)
         )
 
-        if satisfaction > 0.0:
+        desire = float(
+            motivation.get("desire", 0.0)
+        )
 
-            score *= max(
-                0.50,
-                1.0
-                - 0.20 * satisfaction,
-            )
+        urgency = float(
+            motivation.get("urgency", 0.0)
+        )
+
+        satisfaction = float(
+            motivation.get("satisfaction", 0.0)
+        )
+
+        value_ratio = (
+            value / 50.0
+        )
+
+        score = base_score
+
+        # Desire
+        desire_bonus = (
+            1.0
+            + 0.80
+            * desire
+            * value_ratio
+        )
+
+        score *= desire_bonus
+
+        # Urgency
+        proximity = 1.0 / (
+            1.0 + distance
+        )
+
+        urgency_bonus = (
+            1.0
+            + 1.20
+            * urgency
+            * proximity
+            * value_ratio
+        )
+
+        score *= urgency_bonus
+
+        # Lack
+        lack_bonus = (
+            1.0
+            + 0.35 * lack
+        )
+
+        score *= lack_bonus
+
+        # Satisfaction
+        satisfaction_penalty = (
+            1.0
+            - 0.30
+            * satisfaction
+            * (1.0 - proximity)
+        )
+
+        score *= max(
+            0.70,
+            satisfaction_penalty,
+        )
 
         return float(score)
-
-    # =========================================================
-    # Target
-    # =========================================================
+        # =========================================================
+        # Target
+        # =========================================================
 
     def select_target(self):
 
@@ -1198,10 +1193,58 @@ class ValueSeekingAgent(BaseAgent):
     def select_action(self, target):
 
         preferred = (
-            self.action_toward(
-                target
+            self.action_toward(target)
+        )
+
+        motivation = (
+            self.get_motivation_state()
+        )
+
+        satisfaction = float(
+            motivation.get(
+                "satisfaction",
+                0.0,
             )
         )
+
+        urgency = float(
+            motivation.get(
+                "urgency",
+                0.0,
+            )
+        )
+
+        # -----------------------------------------------------
+        # High satisfaction:
+        # less aggressive movement
+        # -----------------------------------------------------
+
+        if (
+            satisfaction > 0.70
+            and urgency < 0.30
+        ):
+
+            if preferred != 4:
+
+                # Occasionally stay instead of
+                # immediately pursuing a resource.
+                if np.random.random() < (
+                    0.20 * satisfaction
+                ):
+                    return 4
+
+        # -----------------------------------------------------
+        # High urgency:
+        # commit strongly to target
+        # -----------------------------------------------------
+
+        if urgency > 0.70:
+
+            return preferred
+
+        # -----------------------------------------------------
+        # Existing action-memory logic
+        # -----------------------------------------------------
 
         risk = (
             self.get_risk_tolerance()
@@ -1213,12 +1256,11 @@ class ValueSeekingAgent(BaseAgent):
             )
         )
 
-        # A strongly negative historical action
-        # should be avoided when risk tolerance is low.
         if (
             preferred_memory < -0.50
             and risk < 0.30
         ):
+
             candidates = (
                 self.get_action_candidates(
                     target
@@ -1252,7 +1294,7 @@ class ValueSeekingAgent(BaseAgent):
             return best_action
 
         return preferred
-
+    
     # =========================================================
     # Diagnostics
     # =========================================================
@@ -1266,9 +1308,16 @@ class ValueSeekingAgent(BaseAgent):
             "memory_reward": self.get_memory_reward(),
             "recent_reward": self.get_recent_reward(),
             "risk_tolerance": self.get_risk_tolerance(),
-            "motivation": self.get_motivation_state(),
-        }
 
+            "motivation":
+                self.get_motivation_state(),
+
+            "steps_since_collection":
+                self.steps_since_collection,
+
+            "last_collected_value":
+                self.last_collected_value,
+        }
     # =========================================================
     # Act
     # =========================================================
@@ -1290,3 +1339,389 @@ class ValueSeekingAgent(BaseAgent):
         )
 
         return action
+
+    # =========================================================
+    # Motivation State - Day 3
+    # =========================================================
+
+    def get_motivation_state(self):
+        """
+        Return current internal motivation state.
+
+        All values are normalized to [0, 1].
+        """
+
+        return self.motivation_state.copy()
+
+    # =========================================================
+    # Motivation Update
+    # =========================================================
+
+    def update_motivation(
+        self,
+        reward=0.0,
+        collected_resource=0.0,
+    ):
+        """
+        Update motivation after each environment step.
+
+        Interpretation:
+
+        Lack:
+            increases when the agent fails to collect.
+
+        Desire:
+            follows lack and recent unsuccessful search.
+
+        Satisfaction:
+            increases after successful collection
+            and decays gradually.
+
+        Urgency:
+            increases when the agent has not collected
+            anything for several steps.
+        """
+
+        reward = max(
+            0.0,
+            float(reward),
+        )
+
+        collected_resource = max(
+            0.0,
+            float(collected_resource),
+        )
+
+        # -----------------------------------------------------
+        # Collection event
+        # -----------------------------------------------------
+
+        if collected_resource > 0.0 or reward > 0.0:
+
+            self.steps_since_collection = 0
+
+            self.last_collected_value = max(
+                collected_resource,
+                reward,
+            )
+
+        else:
+
+            self.steps_since_collection += 1
+
+        # -----------------------------------------------------
+        # Satisfaction
+        # -----------------------------------------------------
+
+        satisfaction_gain = min(
+            1.0,
+            self.last_collected_value / 50.0,
+        )
+
+        self.motivation_state["satisfaction"] = (
+            self.satisfaction_decay
+            * self.motivation_state["satisfaction"]
+            + (1.0 - self.satisfaction_decay)
+            * satisfaction_gain
+        )
+
+        # -----------------------------------------------------
+        # Lack
+        # -----------------------------------------------------
+
+        if self.steps_since_collection == 0:
+
+            self.motivation_state["lack"] *= (
+                self.motivation_decay
+            )
+
+        else:
+
+            lack_growth = min(
+                0.05,
+                0.01
+                * self.steps_since_collection,
+            )
+
+            self.motivation_state["lack"] = min(
+                1.0,
+                self.motivation_state["lack"]
+                + lack_growth,
+            )
+
+        # -----------------------------------------------------
+        # Desire
+        # -----------------------------------------------------
+
+        lack = self.motivation_state["lack"]
+        satisfaction = self.motivation_state[
+            "satisfaction"
+        ]
+
+        desire = (
+            0.70 * lack
+            + 0.30 * (1.0 - satisfaction)
+        )
+
+        self.motivation_state["desire"] = max(
+            0.0,
+            min(1.0, desire),
+        )
+
+        # -----------------------------------------------------
+        # Urgency
+        # -----------------------------------------------------
+
+        urgency = (
+            self.steps_since_collection
+            * self.urgency_growth
+        )
+
+        # Lack also contributes to urgency.
+
+        urgency += (
+            0.35
+            * self.motivation_state["lack"]
+        )
+
+        # Satisfaction suppresses urgency.
+
+        urgency *= (
+            1.0
+            - 0.60
+            * satisfaction
+        )
+
+        self.motivation_state["urgency"] = max(
+            0.0,
+            min(1.0, urgency),
+        )
+        
+        # =========================================================
+    # Experience
+    # =========================================================
+
+    def record_experience(
+        self,
+        action,
+        reward,
+        info,
+    ):
+        """
+        Record experience and update motivation.
+        """
+
+        reward = float(
+            reward or 0.0
+        )
+
+        if not isinstance(info, dict):
+            info = {}
+
+        collected_resource = float(
+            info.get(
+                "collected_resource",
+                0.0,
+            )
+            or 0.0
+        )
+
+        # -----------------------------------------------------
+        # Update motivation FIRST
+        # -----------------------------------------------------
+
+        self.update_motivation(
+            reward=reward,
+            collected_resource=(
+                collected_resource
+            ),
+        )
+
+        # -----------------------------------------------------
+        # Preserve existing BaseAgent memory
+        # -----------------------------------------------------
+
+        super().record_experience(
+            action=action,
+            reward=reward,
+            info=info,
+        )
+
+    def get_risk_adjustment(self, *args, **kwargs):
+        """
+        Day 3 compatibility hook.
+
+        Risk modeling هنوز در این مرحله فعال نشده است.
+        بنابراین مقدار خنثی برمی‌گرداند تا منطق
+        Motivation بتواند بدون تغییر رفتار پایه اجرا شود.
+        """
+        return 0.0
+    
+    def get_resource_competition(
+    self,
+    position,
+    ):
+        """
+        Day 4 - Competition
+
+        تخمین Competition برای یک Resource
+        بر اساس فاصله سایر Agentها از Resource.
+
+        Agent نزدیک‌تر به Resource
+        -> Competition بیشتر
+        """
+
+        position = tuple(position)
+
+        competition = 0.0
+
+        for agent_name in self.env.agents:
+
+            if agent_name == self.agent_name:
+                continue
+
+            if agent_name not in self.env.positions:
+                continue
+
+            other_position = tuple(
+                self.env.positions[agent_name]
+            )
+
+        # Manhattan distance
+            distance = (
+                abs(
+                    position[0]
+                    - other_position[0]
+                )
+                +
+                abs(
+                    position[1]
+                    - other_position[1]
+                )
+            )
+
+            competition += (
+                1.0
+                / (1.0 + distance)
+            )
+
+        return float(competition)
+    
+    def get_resource_risk(
+    self,
+    position,
+    ):
+        """
+        Day 4 Risk Model
+
+        Risk = Distance + Competition
+        """
+
+        distance = float(
+            self.get_distance(position)
+        )
+
+        competition = float(
+            self.get_resource_competition(
+                position
+            )
+        )
+
+        risk = (
+            self.risk_distance_weight
+            * distance
+            +
+            self.risk_competition_weight
+            * competition
+        )
+
+        return float(risk)
+    
+    def get_risk_tolerance(self):
+        """
+        Risk tolerance تحت تأثیر Motivation قرار می‌گیرد.
+
+        Lack بالا
+            -> تحمل ریسک بیشتر
+
+        Satisfaction بالا
+            -> تحمل ریسک کمتر
+        """
+
+        motivation = (
+            self.get_motivation_state()
+        )
+
+        lack = float(
+            motivation.get("lack", 0.0)
+        )
+
+        satisfaction = float(
+            motivation.get(
+                "satisfaction",
+                0.0,
+            )
+        )
+
+        tolerance = (
+            self.base_risk_tolerance
+            +
+            self.lack_risk_tolerance_weight
+            * lack
+            -
+            self.satisfaction_risk_tolerance_weight
+            * satisfaction
+        )
+
+        return float(
+            np.clip(
+                tolerance,
+                0.0,
+                1.0,
+            )
+        )
+        
+    def get_risk_adjustment(
+        self,
+        risk,
+    ):
+        """
+        تبدیل Risk به ضریب قابل استفاده در Score.
+
+        Risk بالاتر از tolerance
+            -> penalty بیشتر
+
+        Risk پایین
+            -> penalty کمتر
+        """
+
+        risk = max(
+            0.0,
+            float(risk),
+        )
+
+        tolerance = max(
+            0.05,
+            self.get_risk_tolerance(),
+        )
+
+        normalized_risk = (
+            risk
+            / tolerance
+        )
+
+        penalty = (
+            1.0
+            +
+            self.risk_penalty_weight
+            * normalized_risk
+        )
+
+        return float(
+            max(
+                1.0,
+                penalty,
+            )
+        )
+        
+        
