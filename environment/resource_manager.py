@@ -1,3 +1,4 @@
+
 import numpy as np
 
 
@@ -11,6 +12,7 @@ class ResourceManager:
     - حذف Resourceهای منقضی‌شده
     - کنترل ظرفیت منابع
     - جلوگیری از Spawn روی Agentها
+    - ثبت Metrics مربوط به Resource Dynamics
     """
 
     def __init__(
@@ -28,25 +30,131 @@ class ResourceManager:
         self.initial_resources = initial_resources
         self.max_resources = max_resources
 
-        self.spawn_probability = spawn_probability
+        self.spawn_probability = float(
+            spawn_probability
+        )
 
         self.min_value = min_value
         self.max_value = max_value
 
-        self.resource_lifetime = resource_lifetime
+        self.resource_lifetime = int(
+            resource_lifetime
+        )
 
         self.resources = {}
         self.resource_birth_steps = {}
 
-    def reset(self, occupied_positions, step=0):
+        # =====================================================
+        # Metrics
+        # =====================================================
+
+        self.metrics = {}
+
+        self._reset_metrics()
+
+    # =========================================================
+    # Metrics
+    # =========================================================
+
+    def _reset_metrics(self):
         """
-        ایجاد منابع اولیه.
+        Reset تمام Metrics مربوط به Resourceها.
+        """
+
+        self.metrics = {
+            "spawned": 0,
+            "collected": 0,
+            "expired": 0,
+
+            "spawned_values": [],
+            "collected_values": [],
+            "expired_values": [],
+            "expired_lifetimes": [],
+        }
+
+    def get_metrics(self):
+        """
+        دریافت Summary Metrics مربوط به Resourceها.
+        """
+
+        expired_lifetimes = (
+            self.metrics["expired_lifetimes"]
+        )
+
+        spawned_values = (
+            self.metrics["spawned_values"]
+        )
+
+        collected_values = (
+            self.metrics["collected_values"]
+        )
+
+        return {
+            "spawned": int(
+                self.metrics["spawned"]
+            ),
+
+            "collected": int(
+                self.metrics["collected"]
+            ),
+
+            "expired": int(
+                self.metrics["expired"]
+            ),
+
+            "mean_lifetime": (
+                float(
+                    np.mean(
+                        expired_lifetimes
+                    )
+                )
+                if expired_lifetimes
+                else 0.0
+            ),
+
+            "mean_value": (
+                float(
+                    np.mean(
+                        spawned_values
+                    )
+                )
+                if spawned_values
+                else 0.0
+            ),
+
+            "mean_collected_value": (
+                float(
+                    np.mean(
+                        collected_values
+                    )
+                )
+                if collected_values
+                else 0.0
+            ),
+        }
+
+    # =========================================================
+    # Reset
+    # =========================================================
+
+    def reset(
+        self,
+        occupied_positions,
+        step=0,
+    ):
+        """
+        ایجاد منابع اولیه و Reset کامل وضعیت ResourceManager.
         """
 
         self.resources = {}
         self.resource_birth_steps = {}
 
-        while len(self.resources) < self.initial_resources:
+        self._reset_metrics()
+
+        while (
+            len(self.resources)
+            < self.initial_resources
+        ):
 
             position = self._random_position(
                 occupied_positions
@@ -58,9 +166,30 @@ class ResourceManager:
             value = self._generate_value()
 
             self.resources[position] = value
-            self.resource_birth_steps[position] = step
 
-    def _random_position(self, occupied_positions):
+            self.resource_birth_steps[
+                position
+            ] = step
+
+            # ثبت Spawn
+            self.metrics[
+                "spawned"
+            ] += 1
+
+            self.metrics[
+                "spawned_values"
+            ].append(
+                value
+            )
+
+    # =========================================================
+    # Position
+    # =========================================================
+
+    def _random_position(
+        self,
+        occupied_positions,
+    ):
         """
         پیدا کردن یک موقعیت آزاد تصادفی.
         """
@@ -70,18 +199,26 @@ class ResourceManager:
             for position in occupied_positions
         )
 
-        occupied.update(self.resources.keys())
+        occupied.update(
+            self.resources.keys()
+        )
 
         available = []
 
-        for x in range(self.grid_size):
+        for x in range(
+            self.grid_size
+        ):
 
-            for y in range(self.grid_size):
+            for y in range(
+                self.grid_size
+            ):
 
                 position = (x, y)
 
                 if position not in occupied:
-                    available.append(position)
+                    available.append(
+                        position
+                    )
 
         if not available:
             return None
@@ -93,9 +230,18 @@ class ResourceManager:
 
         return available[index]
 
+    # =========================================================
+    # Value
+    # =========================================================
+
     def _generate_value(self):
         """
         تولید Value برای Resource جدید.
+
+        Distribution فعلی:
+        - 5  -> 60%
+        - 15 -> 30%
+        - 50 -> 10%
         """
 
         return int(
@@ -105,12 +251,16 @@ class ResourceManager:
             )
         )
 
+    # =========================================================
+    # Collect
+    # =========================================================
+
     def collect(self, position):
         """
         جمع‌آوری Resource.
 
-        Resource از جهان حذف می‌شود و اطلاعات
-        آن برای تولید مجدد در اختیار Environment قرار می‌گیرد.
+        Resource از جهان حذف می‌شود و Metrics
+        مربوط به Collection به‌روزرسانی می‌شود.
         """
 
         position = tuple(position)
@@ -118,14 +268,32 @@ class ResourceManager:
         if position not in self.resources:
             return None
 
-        value = self.resources.pop(position)
+        value = self.resources.pop(
+            position
+        )
 
         self.resource_birth_steps.pop(
             position,
             None,
         )
 
+        value = float(value)
+
+        self.metrics[
+            "collected"
+        ] += 1
+
+        self.metrics[
+            "collected_values"
+        ].append(
+            value
+        )
+
         return value
+
+    # =========================================================
+    # Update
+    # =========================================================
 
     def update(
         self,
@@ -149,26 +317,49 @@ class ResourceManager:
             occupied_positions,
         )
 
-    def _remove_expired_resources(self, step):
+    # =========================================================
+    # Expire
+    # =========================================================
+
+    def _remove_expired_resources(
+        self,
+        step,
+    ):
         """
-        حذف Resourceهایی که بیش از lifetime
+        حذف Resourceهایی که بیش از Lifetime
         در جهان باقی مانده‌اند.
         """
 
         expired = []
 
-        for position, birth_step in (
+        for (
+            position,
+            birth_step,
+        ) in (
             self.resource_birth_steps.items()
         ):
 
-            age = step - birth_step
+            age = (
+                step - birth_step
+            )
 
-            if age >= self.resource_lifetime:
-                expired.append(position)
+            if (
+                age
+                >= self.resource_lifetime
+            ):
+                expired.append(
+                    (
+                        position,
+                        age,
+                    )
+                )
 
-        for position in expired:
+        for (
+            position,
+            lifetime,
+        ) in expired:
 
-            self.resources.pop(
+            value = self.resources.pop(
                 position,
                 None,
             )
@@ -177,6 +368,28 @@ class ResourceManager:
                 position,
                 None,
             )
+
+            self.metrics[
+                "expired"
+            ] += 1
+
+            self.metrics[
+                "expired_lifetimes"
+            ].append(
+                lifetime
+            )
+
+            if value is not None:
+
+                self.metrics[
+                    "expired_values"
+                ].append(
+                    float(value)
+                )
+
+    # =========================================================
+    # Spawn
+    # =========================================================
 
     def _spawn_new_resources(
         self,
@@ -187,10 +400,16 @@ class ResourceManager:
         تولید Resource جدید با احتمال مشخص.
         """
 
-        if len(self.resources) >= self.max_resources:
+        if (
+            len(self.resources)
+            >= self.max_resources
+        ):
             return
 
-        if np.random.random() > self.spawn_probability:
+        if (
+            np.random.random()
+            > self.spawn_probability
+        ):
             return
 
         position = self._random_position(
@@ -204,7 +423,23 @@ class ResourceManager:
 
         self.resources[position] = value
 
-        self.resource_birth_steps[position] = step
+        self.resource_birth_steps[
+            position
+        ] = step
+
+        self.metrics[
+            "spawned"
+        ] += 1
+
+        self.metrics[
+            "spawned_values"
+        ].append(
+            value
+        )
+
+    # =========================================================
+    # Snapshot
+    # =========================================================
 
     def get_resources(self):
         """
@@ -213,9 +448,15 @@ class ResourceManager:
 
         return self.resources.copy()
 
+    # =========================================================
+    # Count
+    # =========================================================
+
     def count(self):
         """
         تعداد فعلی Resourceها.
         """
 
-        return len(self.resources)
+        return len(
+            self.resources
+        )
