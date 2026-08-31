@@ -24,7 +24,9 @@ class ResourceManager:
         min_value=5,
         max_value=50,
         resource_lifetime=120,
+        value_distribution=None,
     ):
+        
         self.grid_size = grid_size
 
         self.initial_resources = initial_resources
@@ -52,6 +54,16 @@ class ResourceManager:
 
         self._reset_metrics()
 
+        self.value_distribution = (
+            value_distribution
+            if value_distribution is not None
+            else {
+                5: 0.60,
+                15: 0.30,
+                50: 0.10,
+            }
+        )
+        
     # =========================================================
     # Metrics
     # =========================================================
@@ -235,22 +247,21 @@ class ResourceManager:
     # =========================================================
 
     def _generate_value(self):
-        """
-        تولید Value برای Resource جدید.
+        values = list(
+            self.value_distribution.keys()
+        )
 
-        Distribution فعلی:
-        - 5  -> 60%
-        - 15 -> 30%
-        - 50 -> 10%
-        """
+        probabilities = list(
+            self.value_distribution.values()
+        )
 
         return int(
             np.random.choice(
-                [5, 15, 50],
-                p=[0.6, 0.3, 0.1],
+                values,
+                p=probabilities,
             )
         )
-
+    
     # =========================================================
     # Collect
     # =========================================================
