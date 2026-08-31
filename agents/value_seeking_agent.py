@@ -1,6 +1,7 @@
 from agents.base_agent import BaseAgent
 import numpy as np
 
+
 class ValueSeekingAgent(BaseAgent):
     """
     Value Seeking Agent
