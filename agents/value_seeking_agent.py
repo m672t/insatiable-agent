@@ -50,6 +50,18 @@ class ValueSeekingAgent(BaseAgent):
         self.memory_weight = float(
             memory_weight
         )
+        
+        # =========================================================
+# Day 5 - Experience Memory
+# =========================================================
+
+        self.memory_max_size = 200
+
+        self.experience_memory = []
+
+        self.current_episode_experiences = []
+
+        self.completed_episode_memory = []
 
         self.risk_weight = float(
             risk_weight
@@ -1051,6 +1063,15 @@ class ValueSeekingAgent(BaseAgent):
             satisfaction_penalty,
         )
 
+        memory_adjustment = (
+            self.get_memory_adjustment(
+                position=position,
+                value=value,
+            )
+        )
+
+        score *= memory_adjustment
+
         return float(score)
         # =========================================================
         # Target
@@ -1546,6 +1567,45 @@ class ValueSeekingAgent(BaseAgent):
             reward=reward,
             info=info,
         )
+        
+        resource_location = info.get(
+            "resource_location"
+        )
+
+        resource_value = info.get(
+            "resource_value",
+            0.0,
+        )
+
+        competition = info.get(
+            "competition",
+            0.0,
+        )
+
+        outcome = info.get(
+            "outcome",
+            "unknown",
+        )
+
+        if resource_location is not None:
+
+            distance = self.get_distance(
+                resource_location
+            )
+
+            self.remember_experience(
+                resource_location=(
+                    resource_location
+                ),
+                resource_value=(
+                    resource_value
+                ),
+                distance=distance,
+                action=action,
+                reward=float(reward),
+                competition=competition,
+                outcome=outcome,
+            )
 
     def get_risk_adjustment(self, *args, **kwargs):
         """
@@ -1724,4 +1784,221 @@ class ValueSeekingAgent(BaseAgent):
             )
         )
         
+    def remember_experience(
+        self,
+        resource_location,
+        resource_value,
+        distance,
+        action,
+        reward,
+        competition,
+        outcome,
+    ):
+        """
+        Day 5 - Store one compact experience.
+        """
+
+        experience = {
+            "resource_location": tuple(
+                resource_location
+            ),
+            "resource_value": float(
+                resource_value
+            ),
+            "distance": float(
+                distance
+            ),
+            "action": action,
+            "reward": float(
+                reward
+            ),
+            "competition": float(
+                competition
+            ),
+            "outcome": str(
+                outcome
+            ),
+        }
+
+        self.experience_memory.append(
+            experience
+        )
+
+        self.current_episode_experiences.append(
+            experience
+        )
+
+    # محدود کردن حافظه
+        if len(
+            self.experience_memory
+        ) > self.memory_max_size:
+
+            self.experience_memory = (
+                self.experience_memory[
+                    -self.memory_max_size:
+                ]
+            )
+            
+    def summarize_episode_memory(self):
+        """
+        Day 5 - Create a compact summary
+        of the current episode.
+        """
+
+        experiences = (
+            self.current_episode_experiences
+        )
+
+        if not experiences:
+            return {
+                "steps": 0,
+                "total_reward": 0.0,
+                "mean_reward": 0.0,
+                "successful_actions": 0,
+                "success_rate": 0.0,
+                "mean_distance": 0.0,
+                "mean_competition": 0.0,
+            }
+
+        total_reward = sum(
+            exp["reward"]
+            for exp in experiences
+        )
+
+        successful_actions = sum(
+            1
+            for exp in experiences
+            if exp["reward"] > 0
+        )
+
+        count = len(experiences)
+
+        summary = {
+            "steps": count,
+
+            "total_reward": float(
+                total_reward
+            ),
+
+            "mean_reward": float(
+                total_reward / count
+            ),
+
+            "successful_actions":
+                successful_actions,
+
+            "success_rate": float(
+                successful_actions / count
+            ),
+
+            "mean_distance": float(
+                sum(
+                    exp["distance"]
+                    for exp in experiences
+                )
+                / count
+            ),
+
+            "mean_competition": float(
+                sum(
+                    exp["competition"]
+                    for exp in experiences
+                )
+                / count
+            ),
+        }
+
+        self.completed_episode_memory.append(
+            summary
+        )
+
+        # Episode summaries هم محدود باشند
+        if len(
+            self.completed_episode_memory
+        ) > 20:
+
+            self.completed_episode_memory = (
+                self.completed_episode_memory[-20:]
+            )
+
+        self.current_episode_experiences = []
+
+        return summary
         
+    def get_memory_adjustment(
+        self,
+        position,
+        value,
+        action=None,
+    ):
+        """
+        Day 5 - Experience-based adjustment.
+
+        تجربه‌های قبلی مشابه را بررسی می‌کند
+        و در صورت موفقیت، Score را کمی تقویت می‌کند.
+        """
+
+        if not self.experience_memory:
+            return 1.0
+
+        position = tuple(position)
+
+        relevant = []
+
+        for experience in self.experience_memory:
+
+            same_location = (
+                experience[
+                    "resource_location"
+                ]
+                == position
+            )
+
+            similar_value = (
+                abs(
+                    experience[
+                        "resource_value"
+                    ] - value
+                )
+                <= 10.0
+            )
+
+            if (
+                same_location
+                or similar_value
+            ):
+                relevant.append(
+                    experience
+                )
+
+        if not relevant:
+            return 1.0
+
+        rewards = [
+            exp["reward"]
+            for exp in relevant
+        ]
+
+        mean_reward = (
+            sum(rewards)
+            / len(rewards)
+        )
+
+        # adjustment محدود نگه داشته می‌شود
+        adjustment = (
+            1.0
+            + 0.20
+            * np.tanh(
+                mean_reward / 50.0
+            )
+        )
+
+        return float(
+            np.clip(
+                adjustment,
+                0.80,
+                1.20,
+            )
+        )
+        
+    
