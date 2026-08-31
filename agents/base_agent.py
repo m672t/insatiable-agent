@@ -4,15 +4,15 @@ from agents.motivation import MotivationModel
 
 class BaseAgent:
     """
-    کلاس پایه تمام Agentها.
+    Base class for all agents.
 
-    مسئول نگهداری:
-    - Environment
-    - Agent Name
-    - InternalState
-    - MotivationModel
-    - Action History
-    - Long-Term Memory
+    Responsible for:
+        - Environment
+        - Agent name
+        - Internal state
+        - Motivation model
+        - Action history
+        - Long-term memory
     """
 
     def __init__(
@@ -44,12 +44,6 @@ class BaseAgent:
     # =========================================================
 
     def reset_episode(self):
-        """
-        Reset وضعیت کوتاه‌مدت Episode.
-
-        Memory عمداً حفظ می‌شود.
-        """
-
         self.action_history = []
         self.internal_state.reset()
 
@@ -58,8 +52,6 @@ class BaseAgent:
     # =========================================================
 
     def record_action(self, action):
-        """ثبت Action."""
-
         try:
             action = int(action)
         except (TypeError, ValueError):
@@ -77,13 +69,6 @@ class BaseAgent:
         reward,
         info=None,
     ):
-        """
-        ثبت تجربه واقعی Agent.
-
-        این متد باید بعد از env.step()
-        فراخوانی شود.
-        """
-
         info = (
             info.copy()
             if isinstance(info, dict)
@@ -111,8 +96,6 @@ class BaseAgent:
     # =========================================================
 
     def get_internal_state(self):
-        """دریافت وضعیت داخلی."""
-
         return self.internal_state.get_state()
 
     # =========================================================
@@ -120,8 +103,6 @@ class BaseAgent:
     # =========================================================
 
     def get_motivation_state(self):
-        """دریافت وضعیت انگیزشی."""
-
         state = self.internal_state.get_state()
 
         return self.motivation_model.get_state(
@@ -134,8 +115,6 @@ class BaseAgent:
     # =========================================================
 
     def get_decision_context(self):
-        """Context استاندارد تصمیم‌گیری."""
-
         motivation = self.get_motivation_state()
 
         return {
@@ -146,8 +125,6 @@ class BaseAgent:
         }
 
     def build_decision_context(self, observation):
-        """ساخت Context کامل Agent."""
-
         return {
             "observation": observation,
             "internal_state": self.get_decision_context(),
