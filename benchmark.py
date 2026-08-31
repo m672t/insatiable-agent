@@ -9,7 +9,6 @@ from agents.value_seeking_agent import ValueSeekingAgent
 
 NUM_EPISODES = 100
 
-
 def run_episode(agent_type, seed):
 
     env = CompetitiveWorld(
@@ -49,6 +48,8 @@ def run_episode(agent_type, seed):
             f"Unknown agent type: {agent_type}"
         )
 
+    agent.reset_episode()
+
     total_reward = 0.0
     total_resources = 0
 
@@ -70,11 +71,23 @@ def run_episode(agent_type, seed):
             }
         )
 
-        total_reward += rewards[agent_name]
+        reward = rewards[agent_name]
+        info = infos[agent_name]
 
-        if infos[agent_name][
-            "collected_resource"
-        ] > 0:
+        # مهم‌ترین بخش:
+        # ثبت تجربه بعد از env.step()
+        agent.record_experience(
+            action=action,
+            reward=reward,
+            info=info,
+        )
+
+        total_reward += reward
+
+        if info.get(
+            "collected_resource",
+            0,
+        ) > 0:
 
             total_resources += 1
 
