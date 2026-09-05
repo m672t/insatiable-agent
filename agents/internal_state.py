@@ -1,14 +1,12 @@
+from agents.memory import MemorySystem
+
+
 class InternalState:
     """
-    وضعیت داخلی پویا برای Agent.
+    Dynamic internal state.
 
-    شامل:
-    - lack
-    - desire
-    - satisfaction
-    - memory
-
-    Memory بین Episodeها حفظ می‌شود.
+    Memory is injected from BaseAgent and is shared
+    with the unified MemorySystem.
     """
 
     def __init__(
@@ -17,21 +15,42 @@ class InternalState:
         desire_decay=0.01,
         satisfaction_decay=0.05,
         max_memory=1000,
+        memory=None,
     ):
-        self.lack_decay = float(lack_decay)
-        self.desire_decay = float(desire_decay)
+        self.lack_decay = float(
+            lack_decay
+        )
+
+        self.desire_decay = float(
+            desire_decay
+        )
+
         self.satisfaction_decay = float(
             satisfaction_decay
         )
 
-        self.max_memory = max(
-            1,
-            int(max_memory),
+        # Unified Memory
+        self.memory = (
+            memory
+            if memory is not None
+            else MemorySystem(
+                max_memory=max_memory
+            )
         )
 
-        self.memory = []
-
         self.reset()
+
+    # =========================================================
+    # Memory Injection
+    # =========================================================
+
+    def set_memory(self, memory):
+        if memory is None:
+            raise ValueError(
+                "memory cannot be None"
+            )
+
+        self.memory = memory
 
     # =========================================================
     # Episode State
@@ -39,9 +58,9 @@ class InternalState:
 
     def reset(self):
         """
-        فقط وضعیت کوتاه‌مدت را Reset می‌کند.
+        فقط وضعیت کوتاه‌مدت reset می‌شود.
 
-        Memory پاک نمی‌شود.
+        Memory حفظ می‌شود.
         """
 
         self.lack = 0.0
@@ -69,15 +88,10 @@ class InternalState:
         except (TypeError, ValueError):
             collected_resource = 0.0
 
-        reward = max(0.0, reward)
         collected_resource = max(
             0.0,
             collected_resource,
         )
-
-        # -----------------------------------------------------
-        # Lack
-        # -----------------------------------------------------
 
         self.lack += self.lack_decay
 
@@ -90,10 +104,6 @@ class InternalState:
             0.0,
             min(1.0, self.lack),
         )
-
-        # -----------------------------------------------------
-        # Satisfaction
-        # -----------------------------------------------------
 
         self.satisfaction -= (
             self.satisfaction_decay
@@ -108,10 +118,6 @@ class InternalState:
             0.0,
             min(1.0, self.satisfaction),
         )
-
-        # -----------------------------------------------------
-        # Desire
-        # -----------------------------------------------------
 
         self.desire -= self.desire_decay
 
@@ -129,126 +135,11 @@ class InternalState:
         )
 
     # =========================================================
-    # Memory
-    # =========================================================
-
-    def record_experience(
-        self,
-        action,
-        reward,
-        info=None,
-    ):
-        """ثبت یک تجربه بلندمدت."""
-
-        try:
-            action = int(action)
-        except (TypeError, ValueError):
-            action = 4
-
-        try:
-            reward = float(reward)
-        except (TypeError, ValueError):
-            reward = 0.0
-
-        raw_info = (
-            info.copy()
-            if isinstance(info, dict)
-            else {}
-        )
-
-        # -----------------------------------------------------
-        # Position
-        # -----------------------------------------------------
-
-        position = raw_info.get("position")
-
-        if position is not None:
-            try:
-                position = tuple(
-                    int(x)
-                    for x in position
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                position = None
-
-        # -----------------------------------------------------
-        # Collected Resource
-        # -----------------------------------------------------
-
-        collected_resource = raw_info.get(
-            "collected_resource",
-            0.0,
-        )
-
-        try:
-            collected_resource = float(
-                collected_resource
-            )
-        except (
-            TypeError,
-            ValueError,
-        ):
-            collected_resource = 0.0
-
-        collected_resource = max(
-            0.0,
-            collected_resource,
-        )
-
-        # -----------------------------------------------------
-        # Experience
-        # -----------------------------------------------------
-
-        experience = {
-            "action": action,
-            "reward": reward,
-            "position": position,
-            "collected_resource": collected_resource,
-            "info": raw_info,
-        }
-
-        self.memory.append(experience)
-
-        # -----------------------------------------------------
-        # Limit
-        # -----------------------------------------------------
-
-        if len(self.memory) > self.max_memory:
-            self.memory = self.memory[
-                -self.max_memory:
-            ]
-
-    # =========================================================
-    # Memory Queries
+    # Memory Access
     # =========================================================
 
     def get_memory(self):
-        """دریافت Copy از Memory."""
-
-        result = []
-
-        for experience in self.memory:
-            copied = experience.copy()
-
-            if isinstance(
-                copied.get("info"),
-                dict,
-            ):
-                copied["info"] = (
-                    copied["info"].copy()
-                )
-
-            result.append(copied)
-
-        return result
-
-    def clear_memory(self):
-        """پاک کردن کامل Memory."""
-
-        self.memory = []
+        return self.memory.get_memory()
 
     # =========================================================
     # State
